@@ -1,0 +1,1564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESP32-S31 Bluetooth Internet Radio</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0f17;
+      --surface: #131a26;
+      --surface-2: #1a2333;
+      --surface-3: #222e42;
+      --border: #2c3b54;
+      --border-strong: #496086;
+      --text: #eef3fb;
+      --muted: #9aa9c2;
+      --accent: #38bdf8;
+      --accent-strong: #0284c7;
+      --green: #22c55e;
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-block-size: 100dvh;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+      line-height: 1.5;
+      background: radial-gradient(circle at 15% 0%, #142238 0%, var(--bg) 55%);
+      color: var(--text);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    :focus-visible {
+      outline: 3px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    /* Top Header */
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: safe center;
+      gap: 1rem;
+      padding-block: 0.85rem;
+      padding-inline: clamp(1rem, 3vw, 2rem);
+      background: rgba(19, 26, 38, 0.88);
+      border-block-end: 1px solid var(--border);
+      backdrop-filter: blur(10px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-dot {
+      inline-size: 12px;
+      block-size: 12px;
+      border-radius: 50%;
+      background: var(--amber);
+      box-shadow: 0 0 12px currentColor;
+    }
+    .brand-dot[data-state="playing"] { background: var(--green); }
+    .brand-dot[data-state="ready"]   { background: var(--accent); }
+    .brand-dot[data-state="error"]   { background: var(--red); }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .brand-sub {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .topbar-pills {
+      margin-inline-start: auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding-block: 0.35rem;
+      padding-inline: 0.75rem;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    /* Main Desktop Grid */
+    .workspace {
+      inline-size: min(1360px, 100%);
+      margin-inline: auto;
+      padding-block: 1.5rem;
+      padding-inline: clamp(1rem, 3vw, 2rem);
+      display: grid;
+      grid-template-columns: minmax(0, 1.65fr) minmax(320px, 1fr);
+      gap: 1.5rem;
+      align-items: start;
+    }
+
+    @media (max-width: 980px) {
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .col-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      min-inline-size: 0;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.4rem;
+      min-inline-size: 0;
+    }
+
+    .panel-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+      margin-block-end: 1rem;
+    }
+
+    .panel-header h2 {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 650;
+    }
+
+    .panel-header-end {
+      margin-inline-start: auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    /* Hero Now Playing Deck */
+    .deck-status-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+      margin-block-end: 0.75rem;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding-block: 0.2rem;
+      padding-inline: 0.6rem;
+      border-radius: 6px;
+      font-size: 0.76rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      background: var(--surface-3);
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+
+    .badge[data-tone="live"] {
+      background: rgba(34, 197, 94, 0.14);
+      color: #86efac;
+      border-color: rgba(34, 197, 94, 0.4);
+    }
+    .badge[data-tone="warn"] {
+      background: rgba(245, 158, 11, 0.15);
+      color: #fcd34d;
+      border-color: rgba(245, 158, 11, 0.4);
+    }
+    .badge[data-tone="err"] {
+      background: rgba(239, 68, 68, 0.16);
+      color: #fca5a5;
+      border-color: rgba(239, 68, 68, 0.45);
+    }
+
+    .now-station {
+      font-size: clamp(1.25rem, 2.2vw, 1.6rem);
+      font-weight: 750;
+      margin: 0 0 0.25rem 0;
+      overflow-wrap: anywhere;
+    }
+
+    .now-track {
+      font-size: 1.02rem;
+      color: var(--accent);
+      margin: 0 0 0.35rem 0;
+      min-block-size: 1.5em;
+      overflow-wrap: anywhere;
+    }
+
+    .now-url {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin: 0 0 1.1rem 0;
+      white-space: nowrap;
+      overflow: clip;
+      text-overflow: ellipsis;
+    }
+
+    /* VU & Buffer Telemetry */
+    .meters-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0.85rem;
+      padding: 0.85rem 1rem;
+      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      margin-block-end: 1.15rem;
+    }
+
+    .meter-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .meter-label {
+      min-inline-size: 4.5rem;
+      font-weight: 600;
+    }
+
+    .meter-track {
+      flex: 1;
+      block-size: 8px;
+      background: #0d131d;
+      border-radius: 999px;
+      overflow: clip;
+      border: 1px solid var(--border);
+    }
+
+    .meter-fill {
+      block-size: 100%;
+      inline-size: calc(var(--pct, 0) * 1%);
+      background: linear-gradient(90deg, var(--accent) 0%, var(--green) 75%, var(--amber) 95%);
+      transition: inline-size 160ms linear;
+    }
+
+    .meter-fill.buf {
+      background: var(--accent);
+    }
+
+    .meter-val {
+      min-inline-size: 2.6rem;
+      text-align: end;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Transport & Volume Controls */
+    .controls-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .transport-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    button {
+      font: inherit;
+      font-size: 0.9rem;
+      font-weight: 600;
+      min-block-size: 42px;
+      padding-block: 0.5rem;
+      padding-inline: 0.95rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-strong);
+      background: var(--surface-2);
+      color: var(--text);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
+      transition: background 120ms ease, border-color 120ms ease;
+    }
+
+    button:hover:not(:disabled) {
+      background: var(--surface-3);
+      border-color: var(--accent);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    button.btn-primary {
+      background: var(--accent-strong);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    button.btn-primary:hover:not(:disabled) {
+      background: #0369a1;
+    }
+
+    button.btn-danger {
+      border-color: rgba(239, 68, 68, 0.55);
+      color: #fca5a5;
+    }
+
+    button.btn-danger:hover:not(:disabled) {
+      background: rgba(239, 68, 68, 0.18);
+      border-color: var(--red);
+    }
+
+    button.btn-sm {
+      min-block-size: 36px;
+      padding-block: 0.3rem;
+      padding-inline: 0.7rem;
+      font-size: 0.82rem;
+    }
+
+    .volume-box {
+      margin-inline-start: auto;
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      flex: 1 1 230px;
+      max-inline-size: 340px;
+    }
+
+    .volume-box input[type="range"] {
+      flex: 1;
+      accent-color: var(--accent);
+      cursor: pointer;
+      min-block-size: 36px;
+    }
+
+    .vol-pct {
+      min-inline-size: 2.8rem;
+      text-align: end;
+      font-size: 0.85rem;
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+    }
+
+    /* Quick Direct Stream Form */
+    .quick-stream-form {
+      margin-block-start: 1.15rem;
+      padding-block-start: 1rem;
+      border-block-start: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      align-items: flex-end;
+    }
+
+    .field-grow {
+      flex: 1 1 260px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    label {
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .hint {
+      font-size: 0.76rem;
+      color: var(--muted);
+    }
+
+    input[type="text"],
+    input[type="url"],
+    input[type="search"],
+    input[type="password"] {
+      font: inherit;
+      font-size: max(1rem, 0.95rem);
+      min-block-size: 42px;
+      inline-size: 100%;
+      padding-block: 0.5rem;
+      padding-inline: 0.75rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-strong);
+      background: #0d131d;
+      color: var(--text);
+    }
+
+    input:user-invalid {
+      border-color: var(--red);
+    }
+
+    /* Station Preset Grid */
+    .station-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      margin-block-end: 1rem;
+    }
+
+    .station-toolbar search {
+      flex: 1 1 220px;
+    }
+
+    .station-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 0.75rem;
+      max-block-size: 520px;
+      overflow-y: auto;
+      scrollbar-gutter: stable;
+      overscroll-behavior: contain;
+    }
+
+    .station-card {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.85rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+    }
+
+    .station-card[data-active="true"] {
+      border-color: var(--accent);
+      background: rgba(56, 189, 248, 0.08);
+    }
+
+    .station-card h3 {
+      margin: 0;
+      font-size: 0.94rem;
+      font-weight: 650;
+      overflow-wrap: anywhere;
+    }
+
+    .station-meta {
+      font-size: 0.77rem;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    .station-actions {
+      margin-block-start: auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+    }
+
+    /* Bluetooth & System Sidebar */
+    .bt-hero {
+      padding: 0.9rem;
+      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      margin-block-end: 1rem;
+    }
+
+    .bt-peer-title {
+      font-weight: 700;
+      font-size: 0.98rem;
+      margin: 0 0 0.25rem 0;
+    }
+
+    .bt-peer-sub {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin: 0;
+    }
+
+    .device-list {
+      list-style: none;
+      margin: 0.5rem 0 1rem 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      max-block-size: 280px;
+      overflow-y: auto;
+      scrollbar-gutter: stable;
+      overscroll-behavior: contain;
+    }
+
+    .device-item {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.65rem 0.75rem;
+      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+    }
+
+    .device-info {
+      flex: 1 1 150px;
+      min-inline-size: 0;
+    }
+
+    .device-name {
+      font-size: 0.88rem;
+      font-weight: 600;
+      overflow-wrap: anywhere;
+    }
+
+    .device-bda {
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .kv-list {
+      margin: 0;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.4rem 1rem;
+      font-size: 0.83rem;
+    }
+
+    .kv-list dt {
+      color: var(--muted);
+    }
+
+    .kv-list dd {
+      margin: 0;
+      text-align: end;
+      font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
+    }
+
+    .check-row {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      margin-block-start: 0.75rem;
+    }
+
+    .check-row input[type="checkbox"] {
+      inline-size: 1.15rem;
+      block-size: 1.15rem;
+      accent-color: var(--accent);
+    }
+
+    /* Native Modal Dialogs */
+    dialog {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      padding: 1.4rem;
+      inline-size: min(500px, calc(100% - 2rem));
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6);
+    }
+
+    dialog:modal {
+      overscroll-behavior: contain;
+    }
+
+    dialog::backdrop {
+      background: rgba(4, 8, 15, 0.72);
+      backdrop-filter: blur(3px);
+      overflow: hidden;
+      overscroll-behavior: contain;
+    }
+
+    .dialog-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-block-end: 1rem;
+    }
+
+    .dialog-header h2 {
+      margin: 0;
+      font-size: 1.1rem;
+    }
+
+    .form-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+
+    .pw-wrap {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.6rem;
+      margin-block-start: 1.25rem;
+    }
+
+    /* Toast / Live Status Region */
+    .status-toast {
+      position: fixed;
+      inset-block-end: 1.25rem;
+      inset-inline-end: 1.25rem;
+      padding: 0.65rem 1rem;
+      border-radius: var(--radius-sm);
+      background: var(--surface-3);
+      border: 1px solid var(--accent);
+      color: var(--text);
+      font-size: 0.86rem;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 180ms ease;
+    }
+
+    .status-toast[data-visible="true"] {
+      opacity: 1;
+    }
+
+    footer {
+      padding-block: 1rem;
+      padding-inline: 1.5rem;
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--muted);
+      border-block-start: 1px solid var(--border);
+    }
+
+    .visually-hidden {
+      position: absolute;
+      clip-path: inset(50%);
+      overflow: hidden;
+      inline-size: 1px;
+      block-size: 1px;
+      margin: -1px;
+      padding: 0;
+      border: 0;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span id="brand-dot" class="brand-dot" aria-hidden="true"></span>
+      <div>
+        <h1>ESP32-S31 Bluetooth Internet Radio</h1>
+        <div class="brand-sub">Waveshare ESP32-S31-Zero &middot; Dual-Core RISC-V &middot; Classic BT A2DP Source</div>
+      </div>
+    </div>
+
+    <div class="topbar-pills">
+      <span id="wifi-pill" class="pill">Wi-Fi: Checking...</span>
+      <span id="bt-pill" class="pill">BT: Checking...</span>
+      <button type="button" id="open-wifi-btn" class="btn-sm">Wi-Fi Setup</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <div class="col-stack">
+      <!-- Now Playing & Transport Panel -->
+      <section class="panel" aria-labelledby="now-playing-heading">
+        <div class="panel-header">
+          <h2 id="now-playing-heading">Now Playing</h2>
+          <div class="panel-header-end">
+            <span id="player-state-badge" class="badge">STOPPED</span>
+            <span id="codec-badge" class="badge">MP3 / AAC</span>
+            <span id="rate-badge" class="badge">-- kHz</span>
+          </div>
+        </div>
+
+        <p id="now-station" class="now-station">Select a station preset to begin</p>
+        <p id="now-track" class="now-track" aria-live="polite">Ready to stream over Classic Bluetooth</p>
+        <p id="now-url" class="now-url"></p>
+
+        <div class="meters-grid" role="group" aria-label="Audio levels and buffer health">
+          <div class="meter-row">
+            <span class="meter-label">Left Ch</span>
+            <div class="meter-track"><div id="vu-l" class="meter-fill" style="--pct: 0;"></div></div>
+            <span id="vu-l-txt" class="meter-val">0%</span>
+          </div>
+          <div class="meter-row">
+            <span class="meter-label">Right Ch</span>
+            <div class="meter-track"><div id="vu-r" class="meter-fill" style="--pct: 0;"></div></div>
+            <span id="vu-r-txt" class="meter-val">0%</span>
+          </div>
+          <div class="meter-row">
+            <span class="meter-label">Net Buf</span>
+            <div class="meter-track"><div id="buf-net" class="meter-fill buf" style="--pct: 0;"></div></div>
+            <span id="buf-net-txt" class="meter-val">0%</span>
+          </div>
+          <div class="meter-row">
+            <span class="meter-label">PCM Buf</span>
+            <div class="meter-track"><div id="buf-pcm" class="meter-fill buf" style="--pct: 0;"></div></div>
+            <span id="buf-pcm-txt" class="meter-val">0%</span>
+          </div>
+        </div>
+
+        <div class="controls-bar">
+          <div class="transport-group" role="group" aria-label="Playback transport">
+            <button type="button" id="btn-prev" aria-label="Previous station">&laquo; Prev</button>
+            <button type="button" id="btn-play-toggle" class="btn-primary">Play</button>
+            <button type="button" id="btn-stop">Stop</button>
+            <button type="button" id="btn-next" aria-label="Next station">Next &raquo;</button>
+          </div>
+
+          <div class="volume-box">
+            <button type="button" id="btn-mute" class="btn-sm" aria-pressed="false">Mute</button>
+            <label for="vol-slider" class="visually-hidden">Volume</label>
+            <input type="range" id="vol-slider" name="volume" min="0" max="100" value="75">
+            <span id="vol-label" class="vol-pct">75%</span>
+          </div>
+        </div>
+
+        <form id="direct-url-form" action="/api/player" method="POST" class="quick-stream-form" aria-label="Stream custom URL">
+          <div class="field-grow">
+            <label for="direct-url-input">Quick Stream URL (MP3, AAC, .pls, or .m3u)</label>
+            <input
+              type="url"
+              id="direct-url-input"
+              name="url"
+              required
+              autocorrect="off"
+              autocapitalize="none"
+              spellcheck="false"
+              placeholder="https://ice2.somafm.com/groovesalad-128-aac">
+          </div>
+          <button type="submit">Stream URL</button>
+        </form>
+      </section>
+
+      <!-- Station Presets Panel -->
+      <section class="panel" aria-labelledby="presets-heading">
+        <div class="panel-header">
+          <h2 id="presets-heading">Radio Station Presets</h2>
+          <div class="panel-header-end">
+            <button type="button" id="btn-add-station" class="btn-primary btn-sm">+ Add Station</button>
+            <button type="button" id="btn-reset-stations" class="btn-sm">Restore Defaults</button>
+          </div>
+        </div>
+
+        <div class="station-toolbar">
+          <search>
+            <form id="station-filter-form" action="/" method="GET">
+              <label for="station-search" class="visually-hidden">Filter stations</label>
+              <input
+                type="search"
+                id="station-search"
+                name="q"
+                autocorrect="off"
+                autocapitalize="none"
+                spellcheck="false"
+                placeholder="Filter stations by name or genre...">
+            </form>
+          </search>
+          <div class="check-row" style="margin-block-start: 0;">
+            <input type="checkbox" id="chk-autoplay" name="autoplay">
+            <label for="chk-autoplay">Auto-play on boot</label>
+          </div>
+        </div>
+
+        <ul id="station-list" class="station-list"></ul>
+      </section>
+    </div>
+
+    <!-- Right Column: Classic Bluetooth A2DP Sink Manager & Board Diagnostics -->
+    <aside class="col-stack" aria-label="Bluetooth Audio and Hardware Telemetry">
+      <section class="panel" aria-labelledby="bt-heading">
+        <div class="panel-header">
+          <h2 id="bt-heading">Classic Bluetooth Audio Output</h2>
+          <div class="panel-header-end">
+            <button type="button" id="btn-bt-scan" class="btn-primary btn-sm">Scan Speakers</button>
+          </div>
+        </div>
+
+        <div class="bt-hero">
+          <p id="bt-peer-name" class="bt-peer-title">No Speaker Connected</p>
+          <p id="bt-peer-detail" class="bt-peer-sub">Put your Bluetooth headphones or speaker into pairing mode, then click Scan Speakers.</p>
+          <div style="display:flex; gap:0.5rem; margin-block-start:0.75rem;">
+            <button type="button" id="btn-bt-disconnect" class="btn-sm" disabled>Disconnect</button>
+            <button type="button" id="btn-bt-forget-all" class="btn-sm btn-danger">Clear Paired List</button>
+          </div>
+        </div>
+
+        <h3 style="font-size:0.88rem; margin:0.5rem 0 0.35rem 0;">Discovered Nearby Devices</h3>
+        <ul id="bt-discovered-list" class="device-list">
+          <li class="hint">Click "Scan Speakers" to discover nearby A2DP audio sinks.</li>
+        </ul>
+
+        <h3 style="font-size:0.88rem; margin:0.5rem 0 0.35rem 0;">Paired Devices</h3>
+        <ul id="bt-bonded-list" class="device-list">
+          <li class="hint">No bonded Bluetooth devices yet.</li>
+        </ul>
+
+        <div class="check-row">
+          <input type="checkbox" id="chk-bt-autoreconnect" name="bt_autoreconnect" checked>
+          <label for="chk-bt-autoreconnect">Auto-reconnect saved Bluetooth speaker</label>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="sys-heading">
+        <div class="panel-header">
+          <h2 id="sys-heading">ESP32-S31-Zero Diagnostics</h2>
+        </div>
+        <dl class="kv-list">
+          <dt>SoC</dt>
+          <dd id="sys-chip">ESP32-S31 RISC-V @ 320 MHz</dd>
+          <dt>Wi-Fi IP / Host</dt>
+          <dd id="sys-ip">--</dd>
+          <dt>Bluetooth MAC</dt>
+          <dd id="sys-bt-mac">--</dd>
+          <dt>Audio Pipeline</dt>
+          <dd id="sys-frames">0 frames (0 underruns)</dd>
+          <dt>Free Internal SRAM</dt>
+          <dd id="sys-sram">-- KB</dd>
+          <dt>Free Octal PSRAM</dt>
+          <dd id="sys-psram">-- KB</dd>
+          <dt>Chip Temp</dt>
+          <dd id="sys-temp">--</dd>
+          <dt>Uptime</dt>
+          <dd id="sys-uptime">--</dd>
+        </dl>
+      </section>
+    </aside>
+  </main>
+
+  <footer>
+    Waveshare ESP32-S31-Zero &middot; Classic Bluetooth (Orca BR/EDR) A2DP Source + Wi-Fi 6 Internet Radio &middot; Onboard Controls: GPIO61 BOOT (Click=Play/Pause, Double=Next, Hold 3s=BT Auto-Pair) &amp; GPIO60 RGB LED
+  </footer>
+
+  <!-- Modal 1: Add / Edit Station -->
+  <dialog id="station-dialog" closedby="any" aria-labelledby="station-dialog-title">
+    <div class="dialog-header">
+      <h2 id="station-dialog-title">Add Radio Station</h2>
+      <button type="button" id="station-dialog-close" class="btn-sm" aria-label="Close station dialog">Close</button>
+    </div>
+    <form id="station-form" action="/api/stations" method="POST" class="form-stack">
+      <input type="hidden" id="st-edit-index" name="index" value="-1">
+      <div class="form-field">
+        <label for="st-name">Station Name *</label>
+        <input type="text" id="st-name" name="name" required maxlength="63" autofocus>
+      </div>
+      <div class="form-field">
+        <label for="st-url">Stream URL (HTTP/HTTPS MP3, AAC, .pls, .m3u) *</label>
+        <input
+          type="url"
+          id="st-url"
+          name="url"
+          required
+          maxlength="255"
+          autocorrect="off"
+          autocapitalize="none"
+          spellcheck="false"
+          aria-describedby="st-url-hint">
+        <span id="st-url-hint" class="hint">Supports Icecast/Shoutcast MP3 &amp; AAC/HE-AAC streams.</span>
+      </div>
+      <div class="form-field">
+        <label for="st-genre">Genre / Tag</label>
+        <input type="text" id="st-genre" name="genre" maxlength="31">
+      </div>
+      <div class="dialog-actions">
+        <button type="button" id="station-cancel-btn">Cancel</button>
+        <button type="submit" class="btn-primary">Save Station</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Modal 2: Wi-Fi Configuration -->
+  <dialog id="wifi-dialog" closedby="any" aria-labelledby="wifi-dialog-title">
+    <div class="dialog-header">
+      <h2 id="wifi-dialog-title">Wi-Fi Network Configuration</h2>
+      <button type="button" id="wifi-dialog-close" class="btn-sm" aria-label="Close Wi-Fi dialog">Close</button>
+    </div>
+    <div style="margin-block-end: 0.85rem; display:flex; align-items:center; justify-content:space-between; gap:0.5rem;">
+      <span class="hint">Select a scanned 2.4 GHz network or type SSID:</span>
+      <button type="button" id="btn-wifi-scan" class="btn-sm">Scan Wi-Fi</button>
+    </div>
+    <ul id="wifi-scan-list" class="device-list" style="max-block-size: 160px;">
+      <li class="hint">Click "Scan Wi-Fi" to list nearby 2.4 GHz access points.</li>
+    </ul>
+    <form id="wifi-form" action="/api/wifi/connect" method="POST" class="form-stack">
+      <div class="form-field">
+        <label for="wf-ssid">Network SSID *</label>
+        <input
+          type="text"
+          id="wf-ssid"
+          name="ssid"
+          required
+          maxlength="32"
+          autocorrect="off"
+          autocapitalize="none"
+          spellcheck="false">
+      </div>
+      <div class="form-field">
+        <label for="wf-pass">Wi-Fi Password</label>
+        <div class="pw-wrap">
+          <input
+            type="password"
+            id="wf-pass"
+            name="password"
+            maxlength="64"
+            autocomplete="current-password">
+          <button type="button" id="btn-toggle-pw" class="btn-sm" aria-pressed="false" aria-label="Show Wi-Fi password">Show</button>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" id="wifi-cancel-btn">Cancel</button>
+        <button type="submit" class="btn-primary">Save &amp; Connect</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Modal 3: Generic Confirmation Dialog -->
+  <dialog id="confirm-dialog" aria-labelledby="confirm-dialog-title">
+    <h2 id="confirm-dialog-title" style="margin-top:0; font-size:1.05rem;">Confirm Action</h2>
+    <p id="confirm-dialog-msg" style="color:var(--muted); font-size:0.92rem;"></p>
+    <form method="dialog" class="dialog-actions">
+      <button value="cancel" autofocus>Cancel</button>
+      <button value="confirm" class="btn-danger">Confirm</button>
+    </form>
+  </dialog>
+
+  <div id="toast" class="status-toast" role="status" aria-live="polite"></div>
+
+  <script>
+    (() => {
+      // Progressive enhancement fallback for <dialog closedby="any">
+      if (!('closedBy' in HTMLDialogElement.prototype)) {
+        const outside = (e, dlg) => {
+          const r = dlg.getBoundingClientRect();
+          return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+        };
+        for (const dlg of document.querySelectorAll('dialog[closedby="any"]')) {
+          let pressedOut = false;
+          dlg.addEventListener('pointerdown', (e) => { pressedOut = outside(e, dlg); });
+          dlg.addEventListener('pointerup', (e) => { if (pressedOut && outside(e, dlg)) dlg.close(); });
+        }
+      }
+
+      let stations = [];
+      let activeStationIdx = 0;
+      let currentPlayerState = 'stopped';
+      let isMuted = false;
+      let volDragging = false;
+      let statusBusy = false;
+      let toastTimer = null;
+      let confirmCallback = null;
+
+      const el = (id) => document.getElementById(id);
+
+      function showToast(msg) {
+        const t = el('toast');
+        t.textContent = msg;
+        t.dataset.visible = 'true';
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => { t.dataset.visible = 'false'; }, 3000);
+      }
+
+      async function apiPost(path, payload) {
+        const res = await fetch(path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        return res.json();
+      }
+
+      function askConfirm(title, message, onConfirm) {
+        const dlg = el('confirm-dialog');
+        el('confirm-dialog-title').textContent = title;
+        el('confirm-dialog-msg').textContent = message;
+        confirmCallback = onConfirm;
+        dlg.returnValue = '';
+        dlg.showModal();
+      }
+
+      el('confirm-dialog').addEventListener('close', () => {
+        const dlg = el('confirm-dialog');
+        const val = dlg.returnValue;
+        dlg.returnValue = '';
+        if (val === 'confirm' && typeof confirmCallback === 'function') {
+          const fn = confirmCallback;
+          confirmCallback = null;
+          fn();
+        }
+      });
+
+      function formatUptime(sec) {
+        const s = Math.floor(sec || 0);
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const rem = s % 60;
+        return `${h}h ${m}m ${rem}s`;
+      }
+
+      function renderStations() {
+        const q = el('station-search').value.trim().toLowerCase();
+        const ul = el('station-list');
+        ul.replaceChildren();
+
+        const filtered = stations.filter((st) =>
+          !q || st.name.toLowerCase().includes(q) || (st.genre || '').toLowerCase().includes(q)
+        );
+
+        if (filtered.length === 0) {
+          const li = document.createElement('li');
+          li.className = 'hint';
+          li.textContent = 'No matching station presets.';
+          ul.appendChild(li);
+          return;
+        }
+
+        for (const st of filtered) {
+          const li = document.createElement('li');
+          li.className = 'station-card';
+          li.dataset.active = String(st.index === activeStationIdx && currentPlayerState !== 'stopped');
+
+          const h3 = document.createElement('h3');
+          h3.textContent = st.name;
+
+          const meta = document.createElement('div');
+          meta.className = 'station-meta';
+          const gSpan = document.createElement('span');
+          gSpan.textContent = st.genre || 'Radio';
+          const idxSpan = document.createElement('span');
+          idxSpan.textContent = `#${st.index + 1}`;
+          meta.append(gSpan, idxSpan);
+
+          const actions = document.createElement('div');
+          actions.className = 'station-actions';
+
+          const playBtn = document.createElement('button');
+          playBtn.type = 'button';
+          playBtn.className = 'btn-primary btn-sm';
+          playBtn.textContent = (st.index === activeStationIdx && currentPlayerState === 'playing') ? 'Playing' : 'Tune In';
+          playBtn.addEventListener('click', async () => {
+            await apiPost('/api/player', { action: 'play', index: st.index });
+            showToast(`Tuning to ${st.name}`);
+            pollStatus();
+          });
+
+          const editBtn = document.createElement('button');
+          editBtn.type = 'button';
+          editBtn.className = 'btn-sm';
+          editBtn.textContent = 'Edit';
+          editBtn.addEventListener('click', () => openStationModal(st));
+
+          const delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.className = 'btn-sm btn-danger';
+          delBtn.textContent = 'Delete';
+          delBtn.addEventListener('click', () => {
+            askConfirm('Delete Station Preset?', `Remove "${st.name}" from saved presets?`, async () => {
+              const r = await apiPost('/api/stations', { action: 'delete', index: st.index });
+              if (r.stations) {
+                stations = r.stations;
+                activeStationIdx = r.active_station;
+                renderStations();
+                showToast('Station deleted');
+              }
+            });
+          });
+
+          actions.append(playBtn, editBtn, delBtn);
+          li.append(h3, meta, actions);
+          ul.appendChild(li);
+        }
+      }
+
+      async function loadStations() {
+        try {
+          const res = await fetch('/api/stations');
+          const data = await res.json();
+          stations = data.stations || [];
+          activeStationIdx = data.active_station ?? 0;
+          el('chk-autoplay').checked = Boolean(data.autoplay);
+          renderStations();
+        } catch (_) {}
+      }
+
+      function updateMeter(idFill, idTxt, val) {
+        const pct = Math.max(0, Math.min(100, Number(val) || 0));
+        el(idFill).style.setProperty('--pct', pct);
+        el(idTxt).textContent = `${pct}%`;
+      }
+
+      async function pollStatus() {
+        if (statusBusy) return;
+        statusBusy = true;
+        try {
+          const res = await fetch('/api/status');
+          const d = await res.json();
+          const p = d.player || {};
+          const b = d.bt || {};
+          const w = d.wifi || {};
+          const s = d.sys || {};
+
+          currentPlayerState = p.state || 'stopped';
+          activeStationIdx = p.station_index ?? activeStationIdx;
+          isMuted = Boolean(p.muted);
+
+          // Topbar indicators
+          const dot = el('brand-dot');
+          if (p.state === 'playing') dot.dataset.state = 'playing';
+          else if (p.state === 'error') dot.dataset.state = 'error';
+          else if (w.sta_connected && b.connected) dot.dataset.state = 'ready';
+          else dot.dataset.state = 'wait';
+
+          el('wifi-pill').textContent = w.sta_connected
+            ? `Wi-Fi: ${w.sta_ssid} (${w.sta_rssi} dBm)`
+            : (w.ap_active ? `Setup AP: ${w.ap_ssid} (${w.ap_ip})` : 'Wi-Fi: Disconnected');
+
+          el('bt-pill').textContent = b.connected
+            ? `BT: ${b.peer_name}`
+            : (b.scanning ? 'BT: Scanning...' : (b.connecting ? 'BT: Connecting...' : 'BT: Not Connected'));
+
+          // Player deck
+          const stBadge = el('player-state-badge');
+          stBadge.textContent = (p.state || 'stopped').toUpperCase();
+          stBadge.dataset.tone = p.state === 'playing' ? 'live' : (p.state === 'error' ? 'err' : (p.state === 'buffering' || p.state === 'connecting' ? 'warn' : ''));
+
+          el('codec-badge').textContent = p.bitrate_kbps
+            ? `${p.codec || 'AUDIO'} ${p.bitrate_kbps} kbps`
+            : (p.codec || 'MP3 / AAC');
+          el('rate-badge').textContent = p.sample_rate
+            ? `${(p.sample_rate / 1000).toFixed(1)} kHz -> 44.1 kHz A2DP`
+            : '44.1 kHz A2DP';
+
+          el('now-station').textContent = p.station_name || 'No Station Selected';
+          if (p.error_msg) {
+            el('now-track').textContent = p.error_msg;
+          } else if (p.icy_title) {
+            el('now-track').textContent = p.icy_title;
+          } else if (p.state === 'playing') {
+            el('now-track').textContent = p.server_name ? `Live on ${p.server_name}` : 'Streaming live audio...';
+          } else if (p.state === 'buffering' || p.state === 'connecting') {
+            el('now-track').textContent = 'Connecting & pre-buffering audio stream...';
+          } else {
+            el('now-track').textContent = 'Playback paused / stopped';
+          }
+          el('now-url').textContent = p.stream_url || '';
+
+          updateMeter('vu-l', 'vu-l-txt', p.vu_left);
+          updateMeter('vu-r', 'vu-r-txt', p.vu_right);
+          updateMeter('buf-net', 'buf-net-txt', p.stream_buf_pct);
+          updateMeter('buf-pcm', 'buf-pcm-txt', p.pcm_buf_pct);
+
+          const toggleBtn = el('btn-play-toggle');
+          toggleBtn.textContent = (p.state === 'playing' || p.state === 'buffering' || p.state === 'connecting') ? 'Pause' : 'Play';
+
+          const muteBtn = el('btn-mute');
+          muteBtn.setAttribute('aria-pressed', String(isMuted));
+          muteBtn.textContent = isMuted ? 'Unmute' : 'Mute';
+
+          if (!volDragging && typeof p.volume === 'number') {
+            el('vol-slider').value = String(p.volume);
+            el('vol-label').textContent = isMuted ? 'Muted' : `${p.volume}%`;
+          }
+
+          // Bluetooth sidebar
+          if (b.connected) {
+            el('bt-peer-name').textContent = b.peer_name || b.peer_bda;
+            el('bt-peer-detail').textContent = `${b.peer_bda} · ${b.codec_desc || 'SBC 44.1k'}${b.abs_vol ? ' · AVRCP Vol' : ''}`;
+            el('btn-bt-disconnect').disabled = false;
+          } else if (b.connecting) {
+            el('bt-peer-name').textContent = `Connecting to ${b.peer_name || b.peer_bda}...`;
+            el('bt-peer-detail').textContent = 'Ensure your speaker/headphones are powered on and nearby.';
+            el('btn-bt-disconnect').disabled = false;
+          } else {
+            el('bt-peer-name').textContent = 'No Bluetooth Speaker Connected';
+            el('bt-peer-detail').textContent = b.scanning
+              ? 'Inquiry scan in progress... Put speaker in pairing mode.'
+              : 'Click "Scan Speakers" to pair headphones or a Bluetooth speaker.';
+            el('btn-bt-disconnect').disabled = true;
+          }
+
+          el('btn-bt-scan').textContent = b.scanning ? 'Stop Scan' : 'Scan Speakers';
+          el('chk-bt-autoreconnect').checked = Boolean(b.auto_reconnect);
+
+          // System diagnostics
+          el('sys-chip').textContent = s.chip || 'ESP32-S31 RISC-V';
+          el('sys-ip').textContent = w.sta_connected ? `${w.sta_ip} (${w.hostname}.local)` : (w.ap_active ? w.ap_ip : '--');
+          el('sys-bt-mac').textContent = b.local_bda || '--';
+          el('sys-frames').textContent = `${p.frames_decoded || 0} frames (${p.underruns || 0} underruns)`;
+          el('sys-sram').textContent = `${Math.round(s.free_sram_kb || 0)} KB`;
+          el('sys-psram').textContent = `${Math.round(s.free_psram_kb || 0)} KB`;
+          const tempEl = el('sys-temp');
+          if (typeof s.temp_c === 'number') {
+            const tempF = (s.temp_c * 9 / 5 + 32).toFixed(1);
+            tempEl.textContent = `${s.temp_c.toFixed(1)} °C (${tempF} °F)`;
+            tempEl.style.color = s.temp_c >= 80 ? '#ef4444' : (s.temp_c >= 70 ? '#f59e0b' : '');
+          } else {
+            tempEl.textContent = '--';
+            tempEl.style.color = '';
+          }
+          el('sys-uptime').textContent = formatUptime(s.uptime_sec);
+
+          renderStations();
+          if (b.scanning) {
+            refreshBtDevices();
+          }
+        } catch (_) {} finally {
+          statusBusy = false;
+        }
+      }
+
+      async function refreshBtDevices() {
+        try {
+          const res = await fetch('/api/bt/devices');
+          const d = await res.json();
+          const discUl = el('bt-discovered-list');
+          const bondUl = el('bt-bonded-list');
+
+          discUl.replaceChildren();
+          const disc = (d.discovered || []).slice().sort((a, b) => Number(b.is_audio_sink) - Number(a.is_audio_sink) || b.rssi - a.rssi);
+          if (disc.length === 0) {
+            const li = document.createElement('li');
+            li.className = 'hint';
+            li.textContent = d.scanning ? 'Searching nearby Classic Bluetooth devices...' : 'No devices in recent scan.';
+            discUl.appendChild(li);
+          } else {
+            for (const item of disc) {
+              const li = document.createElement('li');
+              li.className = 'device-item';
+
+              const info = document.createElement('div');
+              info.className = 'device-info';
+              const nm = document.createElement('div');
+              nm.className = 'device-name';
+              nm.textContent = `${item.name || 'Unnamed BT Device'}${item.is_audio_sink ? ' (Audio)' : ''}`;
+              const sub = document.createElement('div');
+              sub.className = 'device-bda';
+              sub.textContent = `${item.bda} · ${item.rssi} dBm`;
+              info.append(nm, sub);
+
+              const btn = document.createElement('button');
+              btn.type = 'button';
+              btn.className = 'btn-primary btn-sm';
+              const isConn = d.connected_bda && d.connected_bda === item.bda;
+              btn.textContent = isConn ? 'Connected' : 'Connect';
+              btn.disabled = Boolean(isConn);
+              btn.addEventListener('click', async () => {
+                await apiPost('/api/bt/action', { action: 'connect', bda: item.bda, name: item.name });
+                showToast(`Connecting to ${item.name || item.bda}...`);
+                setTimeout(refreshBtDevices, 1500);
+              });
+
+              li.append(info, btn);
+              discUl.appendChild(li);
+            }
+          }
+
+          bondUl.replaceChildren();
+          const bonded = d.bonded || [];
+          if (bonded.length === 0) {
+            const li = document.createElement('li');
+            li.className = 'hint';
+            li.textContent = 'No paired Bluetooth devices saved.';
+            bondUl.appendChild(li);
+          } else {
+            for (const item of bonded) {
+              const li = document.createElement('li');
+              li.className = 'device-item';
+
+              const info = document.createElement('div');
+              info.className = 'device-info';
+              const nm = document.createElement('div');
+              nm.className = 'device-name';
+              nm.textContent = item.name || item.bda;
+              const sub = document.createElement('div');
+              sub.className = 'device-bda';
+              sub.textContent = item.bda;
+              info.append(nm, sub);
+
+              const connBtn = document.createElement('button');
+              connBtn.type = 'button';
+              connBtn.className = 'btn-sm';
+              const isConn = d.connected_bda && d.connected_bda === item.bda;
+              connBtn.textContent = isConn ? 'Active' : 'Connect';
+              connBtn.disabled = Boolean(isConn);
+              connBtn.addEventListener('click', async () => {
+                await apiPost('/api/bt/action', { action: 'connect', bda: item.bda, name: item.name });
+                showToast(`Reconnecting to ${item.name || item.bda}...`);
+              });
+
+              const forgetBtn = document.createElement('button');
+              forgetBtn.type = 'button';
+              forgetBtn.className = 'btn-sm btn-danger';
+              forgetBtn.textContent = 'Forget';
+              forgetBtn.addEventListener('click', async () => {
+                await apiPost('/api/bt/action', { action: 'forget', bda: item.bda });
+                showToast('Removed paired device');
+                refreshBtDevices();
+              });
+
+              li.append(info, connBtn, forgetBtn);
+              bondUl.appendChild(li);
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Transport Listeners
+      el('btn-play-toggle').addEventListener('click', async () => {
+        await apiPost('/api/player', { action: 'toggle' });
+        pollStatus();
+      });
+      el('btn-stop').addEventListener('click', async () => {
+        await apiPost('/api/player', { action: 'stop' });
+        pollStatus();
+      });
+      el('btn-prev').addEventListener('click', async () => {
+        await apiPost('/api/player', { action: 'prev' });
+        pollStatus();
+      });
+      el('btn-next').addEventListener('click', async () => {
+        await apiPost('/api/player', { action: 'next' });
+        pollStatus();
+      });
+      el('btn-mute').addEventListener('click', async () => {
+        await apiPost('/api/player', { action: 'volume', muted: !isMuted });
+        pollStatus();
+      });
+
+      const volSlider = el('vol-slider');
+      volSlider.addEventListener('pointerdown', () => { volDragging = true; });
+      volSlider.addEventListener('pointerup', () => { volDragging = false; });
+      volSlider.addEventListener('input', () => {
+        el('vol-label').textContent = `${volSlider.value}%`;
+      });
+      volSlider.addEventListener('change', async () => {
+        volDragging = false;
+        await apiPost('/api/player', { action: 'volume', volume: Number(volSlider.value), muted: false });
+        pollStatus();
+      });
+
+      el('direct-url-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = el('direct-url-input');
+        if (!input.checkValidity()) {
+          input.focus();
+          return;
+        }
+        const url = input.value.trim();
+        await apiPost('/api/player', { action: 'play_url', url, name: 'Custom URL Stream' });
+        showToast('Streaming custom URL...');
+        pollStatus();
+      });
+
+      // Station Modal & Search
+      el('station-filter-form').addEventListener('submit', (e) => e.preventDefault());
+      el('station-search').addEventListener('input', renderStations);
+
+      el('chk-autoplay').addEventListener('change', async (e) => {
+        await apiPost('/api/player', { action: 'autoplay', autoplay: e.target.checked });
+        showToast(`Auto-play on boot ${e.target.checked ? 'enabled' : 'disabled'}`);
+      });
+
+      function openStationModal(st = null) {
+        const dlg = el('station-dialog');
+        el('station-dialog-title').textContent = st ? 'Edit Station Preset' : 'Add Radio Station';
+        el('st-edit-index').value = st ? String(st.index) : '-1';
+        el('st-name').value = st ? st.name : '';
+        el('st-url').value = st ? st.url : '';
+        el('st-genre').value = st ? (st.genre || '') : '';
+        dlg.showModal();
+      }
+
+      el('btn-add-station').addEventListener('click', () => openStationModal(null));
+      el('station-dialog-close').addEventListener('click', () => el('station-dialog').close());
+      el('station-cancel-btn').addEventListener('click', () => el('station-dialog').close());
+
+      el('station-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const idx = Number(el('st-edit-index').value);
+        const payload = {
+          action: idx >= 0 ? 'update' : 'add',
+          index: idx,
+          name: el('st-name').value.trim(),
+          url: el('st-url').value.trim(),
+          genre: el('st-genre').value.trim() || 'Custom',
+        };
+        const r = await apiPost('/api/stations', payload);
+        if (r.ok && r.stations) {
+          stations = r.stations;
+          activeStationIdx = r.active_station;
+          renderStations();
+          el('station-dialog').close();
+          showToast(idx >= 0 ? 'Station updated' : 'Station added');
+        } else {
+          showToast(`Error: ${r.message || 'Invalid URL'}`);
+        }
+      });
+
+      el('btn-reset-stations').addEventListener('click', () => {
+        askConfirm('Restore Default Stations?', 'Replace the station preset list with the factory curated MP3 & AAC stations?', async () => {
+          const r = await apiPost('/api/stations', { action: 'reset' });
+          if (r.stations) {
+            stations = r.stations;
+            activeStationIdx = r.active_station;
+            renderStations();
+            showToast('Restored default stations');
+          }
+        });
+      });
+
+      // Bluetooth Controls
+      el('btn-bt-scan').addEventListener('click', async () => {
+        const scanning = el('btn-bt-scan').textContent.includes('Stop');
+        await apiPost('/api/bt/action', { action: scanning ? 'stop_scan' : 'scan', duration: 12 });
+        showToast(scanning ? 'Bluetooth scan stopped' : 'Scanning nearby Bluetooth speakers...');
+        pollStatus();
+        refreshBtDevices();
+      });
+
+      el('btn-bt-disconnect').addEventListener('click', async () => {
+        await apiPost('/api/bt/action', { action: 'disconnect' });
+        showToast('Disconnected Bluetooth speaker');
+        pollStatus();
+      });
+
+      el('btn-bt-forget-all').addEventListener('click', () => {
+        askConfirm('Clear All Paired Speakers?', 'Disconnect and unbond all saved Bluetooth speakers/headphones?', async () => {
+          await apiPost('/api/bt/action', { action: 'forget_all' });
+          showToast('Cleared paired Bluetooth devices');
+          refreshBtDevices();
+          pollStatus();
+        });
+      });
+
+      el('chk-bt-autoreconnect').addEventListener('change', async (e) => {
+        await apiPost('/api/bt/action', { action: 'options', auto_reconnect: e.target.checked });
+      });
+
+      // Wi-Fi Modal
+      el('open-wifi-btn').addEventListener('click', () => {
+        el('wifi-dialog').showModal();
+      });
+      el('wifi-dialog-close').addEventListener('click', () => el('wifi-dialog').close());
+      el('wifi-cancel-btn').addEventListener('click', () => el('wifi-dialog').close());
+
+      el('btn-toggle-pw').addEventListener('click', () => {
+        const pw = el('wf-pass');
+        const btn = el('btn-toggle-pw');
+        const show = pw.type === 'password';
+        pw.type = show ? 'text' : 'password';
+        btn.setAttribute('aria-pressed', String(show));
+        btn.textContent = show ? 'Hide' : 'Show';
+      });
+
+      el('btn-wifi-scan').addEventListener('click', async () => {
+        const ul = el('wifi-scan-list');
+        ul.replaceChildren();
+        const li = document.createElement('li');
+        li.className = 'hint';
+        li.textContent = 'Scanning 2.4 GHz Wi-Fi networks...';
+        ul.appendChild(li);
+
+        try {
+          const res = await fetch('/api/wifi/scan');
+          const d = await res.json();
+          ul.replaceChildren();
+          const aps = d.aps || [];
+          if (aps.length === 0) {
+            const empty = document.createElement('li');
+            empty.className = 'hint';
+            empty.textContent = 'No networks found.';
+            ul.appendChild(empty);
+            return;
+          }
+          for (const ap of aps) {
+            const item = document.createElement('li');
+            item.className = 'device-item';
+            const info = document.createElement('div');
+            info.className = 'device-info';
+            const nm = document.createElement('div');
+            nm.className = 'device-name';
+            nm.textContent = `${ap.ssid} ${ap.secure ? '(WPA)' : '(Open)'}`;
+            const sub = document.createElement('div');
+            sub.className = 'device-bda';
+            sub.textContent = `${ap.rssi} dBm · Channel ${ap.channel}`;
+            info.append(nm, sub);
+
+            const pickBtn = document.createElement('button');
+            pickBtn.type = 'button';
+            pickBtn.className = 'btn-sm';
+            pickBtn.textContent = 'Select';
+            pickBtn.addEventListener('click', () => {
+              el('wf-ssid').value = ap.ssid;
+              el('wf-pass').focus();
+            });
+            item.append(info, pickBtn);
+            ul.appendChild(item);
+          }
+        } catch (_) {
+          ul.replaceChildren();
+          const errLi = document.createElement('li');
+          errLi.className = 'hint';
+          errLi.textContent = 'Scan failed.';
+          ul.appendChild(errLi);
+        }
+      });
+
+      el('wifi-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const ssid = el('wf-ssid').value.trim();
+        const password = el('wf-pass').value;
+        if (!ssid) {
+          el('wf-ssid').focus();
+          return;
+        }
+        await apiPost('/api/wifi/connect', { action: 'connect', ssid, password });
+        el('wifi-dialog').close();
+        showToast(`Connecting to Wi-Fi "${ssid}"... Check USB console if IP changes.`);
+      });
+
+      // Boot sequence
+      loadStations();
+      refreshBtDevices();
+      pollStatus();
+      setInterval(pollStatus, 1500);
+      setInterval(refreshBtDevices, 8000);
+    })();
+  </script>
+</body>
+</html>

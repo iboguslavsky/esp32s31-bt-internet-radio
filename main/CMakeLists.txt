@@ -1,0 +1,31 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "radio_config.c"
+        "board_hw.c"
+        "wifi_manager.c"
+        "bt_a2dp_source.c"
+        "audio_pipeline.c"
+        "web_server.c"
+        "usb_cli.c"
+    INCLUDE_DIRS "."
+    EMBED_FILES "webui/index.html.gz"
+    PRIV_REQUIRES
+        nvs_flash
+        esp_wifi
+        esp_coex
+        esp_netif
+        esp_event
+        esp_http_client
+        esp_http_server
+        esp-tls
+        mbedtls
+        bt
+        console
+        esp_driver_rmt
+        esp_driver_gpio
+        esp_driver_tsens
+        esp_timer
+        minimp3
+        helix_aac
+)

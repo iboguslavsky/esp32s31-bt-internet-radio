@@ -1,0 +1,17 @@
+# Build outputs
+.pio/
+build/
+managed_components/
+
+# Generated ESP-IDF / PlatformIO sdkconfig files (keep sdkconfig.defaults)
+sdkconfig
+sdkconfig.old
+sdkconfig.waveshare_esp32_s31_zero
+
+# Python / OS / Editor artifacts
+__pycache__/
+*.pyc
+.DS_Store
+.vscode/
+*.swp
+*.bak
