@@ -77,14 +77,16 @@ Target board: **Waveshare ESP32-S31-Zero**
 
 ### RGB LED Status Codes (`GPIO60`)
 
-| Color / Pattern | Meaning |
-|---|---|
-| Breathing Amber | Waiting for Wi-Fi / SoftAP provisioning (`ESP32-S31-Radio`) |
-| Pulsing Blue | Scanning / pairing Classic Bluetooth |
-| Breathing Purple | Connecting / pre-buffering radio stream |
-| Solid Cyan | Connected & idle / paused |
-| Solid Emerald Green | Actively streaming radio over Bluetooth A2DP |
-| Blinking Red | Stream or network error |
+Driven in priority order by [`main/main.c`](main/main.c) and [`main/board_hw.c`](main/board_hw.c) (brightness capped at `≤ 28 / 255` for comfortable desk viewing):
+
+| Priority | Color | Pattern / Timing | RGB *(0–255)* | Meaning |
+|---:|---|---|---|---|
+| 1 | 🔵 **Blue** | Fast blink (~120 ms) | `(0, 0, 28)` ↔ `(0, 0, 3)` | Scanning / pairing Classic Bluetooth speakers |
+| 2 | 🟠 **Amber** | Slow breathing (~2.4 s) | `(4..24, 1..8, 0)` | Waiting for Wi-Fi / SoftAP setup (`ESP32-S31-Radio`) *(initial boot state)* |
+| 3 | 🔴 **Red** | Blinking (~160 ms) | `(26, 0, 0)` ↔ `(0, 0, 0)` | Stream, HTTP/TLS, or network error |
+| 4 | 🟣 **Purple** | Slow breathing (~2.4 s) | `(2..12, 0, 4..24)` | Connecting to station URL or pre-buffering audio |
+| 5 | 🟢 **Emerald Green** | Solid | `(0, 20, 4)` | Actively streaming radio audio over Bluetooth A2DP |
+| 6 | 🩵 **Soft Cyan** | Solid | `(0, 10, 14)` | Wi-Fi connected & ready (paused, stopped, or waiting for BT speaker) |
 
 ---
 
