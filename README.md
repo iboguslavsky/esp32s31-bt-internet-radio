@@ -8,6 +8,14 @@ Built natively on **ESP-IDF v6.1** (`esp32s31` dual-core 320 MHz RISC-V) via **P
 
 ---
 
+## Desktop WebUI
+
+![ESP32-S31 Bluetooth Internet Radio Desktop WebUI](docs/webui-screenshot.png)
+
+*Live screenshot of the embedded single-page WebUI (`http://esp32s31-radio.local/`) streaming KCSM 64 kbps AAC to a Classic Bluetooth A2DP speaker (`SBC 44.1 kHz Joint Stereo, Bitpool 38`), showing real-time stereo VU meters, PSRAM buffer health, searchable worldwide presets, Bluetooth speaker controls, and live chip temperature diagnostics.*
+
+---
+
 ## Architecture Overview
 
 ```mermaid
